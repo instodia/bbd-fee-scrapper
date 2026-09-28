@@ -341,30 +341,7 @@ export default function FeeScraperApp() {
               )}
             </div>
 
-            {/* 3. Available Academic Sessions List */}
-            {result.academicYears.length > 0 && (
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                  <h2 className="text-base font-semibold text-gray-900">
-                    Available Academic Years
-                  </h2>
-                </div>
-                <div className="p-4">
-                  <ul className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-sm text-gray-700">
-                    {result.academicYears.map((yr) => (
-                      <li
-                        key={yr.value}
-                        className="bg-gray-50 border border-gray-200 rounded px-2.5 py-1 text-center font-mono text-xs"
-                      >
-                        {yr.label}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
-
-            {/* 4. Portal Meta Details List */}
+            {/* 3. Portal Meta Details List */}
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
               <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
                 <h2 className="text-base font-semibold text-gray-900">
