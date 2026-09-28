@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveOrganization, ORGANIZATIONS } from "@/lib/types";
-import { scrapeBbdFeeDetails, ScraperError } from "@/lib/scraper";
+import {
+  scrapeBbdFeeDetails,
+  scrapeAllBbdColleges,
+  ScraperError,
+} from "@/lib/scraper";
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,41 +12,6 @@ export async function POST(req: NextRequest) {
     const collegeInput = (body.college || body.organization || "").toString().trim();
     const studentName = (body.name || body.studentName || "").toString().trim();
     const mobile = (body.mobile || body.phone || body.phoneNumber || "").toString().trim();
-
-    if (!collegeInput) {
-      return NextResponse.json(
-        {
-          success: false,
-          found: false,
-          error: "College name is required",
-          message: "Please choose or provide a valid college (e.g. BBDITM, BBDU, BBDNIIT, BBDEC, VIROHAN)",
-          availableColleges: ORGANIZATIONS.map((o) => ({
-            id: o.id,
-            code: o.code,
-            name: o.name,
-          })),
-        },
-        { status: 400 }
-      );
-    }
-
-    const org = resolveOrganization(collegeInput);
-    if (!org) {
-      return NextResponse.json(
-        {
-          success: false,
-          found: false,
-          error: `Unrecognized college: "${collegeInput}"`,
-          message: `Could not identify college. Valid options are: ${ORGANIZATIONS.map((o) => o.code).join(", ")}`,
-          availableColleges: ORGANIZATIONS.map((o) => ({
-            id: o.id,
-            code: o.code,
-            name: o.name,
-          })),
-        },
-        { status: 400 }
-      );
-    }
 
     if (!studentName) {
       return NextResponse.json(
@@ -69,8 +38,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await scrapeBbdFeeDetails(org, studentName, cleanMobile);
-    return NextResponse.json(result, { status: 200 });
+    // If specific college is provided, query only that college
+    if (collegeInput) {
+      const org = resolveOrganization(collegeInput);
+      if (!org) {
+        return NextResponse.json(
+          {
+            success: false,
+            found: false,
+            error: `Unrecognized college: "${collegeInput}"`,
+            message: `Could not identify college. Valid options are: ${ORGANIZATIONS.map((o) => o.code).join(", ")}`,
+            availableColleges: ORGANIZATIONS.map((o) => ({
+              id: o.id,
+              code: o.code,
+              name: o.name,
+            })),
+          },
+          { status: 400 }
+        );
+      }
+
+      const result = await scrapeBbdFeeDetails(org, studentName, cleanMobile);
+      return NextResponse.json(result, { status: 200 });
+    }
+
+    // If no college is provided, query all 5 colleges simultaneously
+    const multiResult = await scrapeAllBbdColleges(studentName, cleanMobile);
+    return NextResponse.json(multiResult, { status: 200 });
   } catch (err: unknown) {
     if (err instanceof ScraperError) {
       return NextResponse.json(
@@ -109,7 +103,7 @@ export async function GET(req: NextRequest) {
       message: "BBD Fee Payment Scraper API",
       endpoint: "/api/scrape-fee-details",
       methods: ["GET", "POST"],
-      usage: "Pass query params ?college=BBDITM&name=Shivanshu+Shukla&mobile=6306808581 or POST JSON",
+      usage: "Pass query params ?name=Shivanshu+Shukla&mobile=6306808581 (searches all 5 colleges) or include &college=BBDITM",
       organizations: ORGANIZATIONS,
     });
   }

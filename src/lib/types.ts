@@ -147,6 +147,23 @@ export interface ScrapedStudentDetails {
   timestamp: string;
 }
 
+export interface MultiCollegeSearchResult {
+  success: boolean;
+  found: boolean;
+  studentName: string;
+  mobile: string;
+  totalFound: number;
+  records: ScrapedStudentDetails[];
+  searchedColleges: {
+    id: string;
+    code: string;
+    name: string;
+    found: boolean;
+    error?: string;
+  }[];
+  timestamp: string;
+}
+
 export interface ScrapeErrorResponse {
   success: false;
   found: false;

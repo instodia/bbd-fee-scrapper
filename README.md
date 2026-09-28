@@ -63,7 +63,15 @@ A modern, fast web application and API to scrape student profile details, roll n
 Content-Type: application/json
 ```
 
-**Request Body:**
+**Request Body (searches all 5 colleges simultaneously):**
+```json
+{
+  "name": "Shivanshu Shukla",
+  "mobile": "6306808581"
+}
+```
+
+Or target a specific college:
 ```json
 {
   "college": "BBDITM",
@@ -114,5 +122,9 @@ Content-Type: application/json
 
 ### `GET /api/scrape-fee-details`
 ```bash
+# Query all colleges simultaneously
+curl "http://127.0.0.1:3456/api/scrape-fee-details?name=Shivanshu+Shukla&mobile=6306808581"
+
+# Or query a specific college
 curl "http://127.0.0.1:3456/api/scrape-fee-details?college=BBDITM&name=Shivanshu+Shukla&mobile=6306808581"
 ```

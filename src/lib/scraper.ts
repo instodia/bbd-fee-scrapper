@@ -5,6 +5,8 @@ import {
   ScrapedStudentDetails,
   StudentAcademicDetails,
   Organization,
+  ORGANIZATIONS,
+  MultiCollegeSearchResult,
 } from "./types";
 
 const BASE_URL = "https://mybbd.in";
@@ -29,7 +31,6 @@ export class ScraperError extends Error {
  * Parses cookies from Set-Cookie headers into a Cookie header string
  */
 function extractCookieHeader(responseHeaders: Headers): string {
-  // node-fetch / undici may provide getSetCookie
   let setCookies: string[] = [];
   if (typeof (responseHeaders as unknown as { getSetCookie?: () => string[] }).getSetCookie === "function") {
     setCookies = (responseHeaders as unknown as { getSetCookie: () => string[] }).getSetCookie();
@@ -94,79 +95,27 @@ export async function getCsrfTokenAndSession(): Promise<{
 }
 
 /**
- * Step 2: Submits the search form and parses student details
+ * Helper to parse HTML response for a single college search
  */
-export async function scrapeBbdFeeDetails(
+function parseStudentDetailsHtml(
+  detailsHtml: string,
   org: Organization,
-  studentName: string,
-  mobile: string
-): Promise<ScrapedStudentDetails> {
-  const cleanName = studentName.trim();
-  const cleanMobile = mobile.trim().replace(/\D/g, "");
-
-  if (!cleanName) {
-    throw new ScraperError("Student name is required", 400);
-  }
-
-  if (cleanMobile.length !== 10) {
-    throw new ScraperError(
-      `Mobile number must be exactly 10 digits (received ${cleanMobile.length} digits: ${cleanMobile})`,
-      400
-    );
-  }
-
-  // 1. Get token and initial session cookies
-  const { token, cookies } = await getCsrfTokenAndSession();
-
-  // 2. Submit POST request to /fee-payment/details
-  const formParams = new URLSearchParams();
-  formParams.append("_token", token);
-  formParams.append("organization", org.id);
-  formParams.append("name", cleanName);
-  formParams.append("mobile", cleanMobile);
-
-  const postResp = await fetch(DETAILS_URL, {
-    method: "POST",
-    headers: {
-      "User-Agent": DEFAULT_USER_AGENT,
-      "Content-Type": "application/x-www-form-urlencoded",
-      Referer: FEE_PAYMENT_URL,
-      Origin: BASE_URL,
-      Cookie: cookies,
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    },
-    body: formParams.toString(),
-    cache: "no-store",
-  });
-
-  if (postResp.status === 419) {
-    throw new ScraperError("Portal session expired (419). Please try again.", 502);
-  }
-
-  if (!postResp.ok) {
-    throw new ScraperError(
-      `Portal returned unexpected response (${postResp.status} ${postResp.statusText})`,
-      502
-    );
-  }
-
-  const detailsHtml = await postResp.text();
+  cleanName: string,
+  cleanMobile: string
+): ScrapedStudentDetails {
   const $ = cheerio.load(detailsHtml);
 
   // Check if student was not found
   if (detailsHtml.includes("Your details does not matched") || detailsHtml.includes("alert-danger")) {
-    const errorText = $(".alert-danger").text().trim().replace(/\s+/g, " ") ||
-      "Your details do not match the college records. Please verify the college name, full name, and mobile number.";
+    const errorText =
+      $(".alert-danger").text().trim().replace(/\s+/g, " ") ||
+      "Your details do not match the college records.";
     throw new ScraperError(errorText, 404, true);
   }
 
-  // If Univ. Roll. No. is absent, check whether any student table exists
+  // If Univ. Roll. No. is absent and student_id is absent, not found
   if (!detailsHtml.includes("Univ. Roll. No.") && !$('input[name="student_id"]').length) {
-    throw new ScraperError(
-      "No student record found for the provided details. Please check the inputs.",
-      404,
-      true
-    );
+    throw new ScraperError("No student record found.", 404, true);
   }
 
   // Parse Academic Table
@@ -181,7 +130,6 @@ export async function scrapeBbdFeeDetails(
   let seat = "Counseling";
   let category = "GEN";
 
-  // Parse table rows
   $("table.table tr").each((_, tr) => {
     const tds = $(tr).find("td");
     const rowText = $(tr).text().trim();
@@ -203,7 +151,6 @@ export async function scrapeBbdFeeDetails(
     }
 
     if (rowText.includes("Univ. Roll. No.")) {
-      // Typically: <td>Univ. Roll. No.</td><td>2500541530140</td><td>Regn. No.</td><td>...</td>
       $(tds).each((idx, td) => {
         const text = $(td).text().trim();
         if (text.includes("Univ. Roll. No.")) {
@@ -215,7 +162,12 @@ export async function scrapeBbdFeeDetails(
       });
     }
 
-    if (rowText.includes("Type:") || rowText.includes("Status:") || rowText.includes("Seat:") || rowText.includes("Category:")) {
+    if (
+      rowText.includes("Type:") ||
+      rowText.includes("Status:") ||
+      rowText.includes("Seat:") ||
+      rowText.includes("Category:")
+    ) {
       $(tds).each((_, td) => {
         const text = $(td).text().trim();
         if (text.includes("Type:")) type = text.replace("Type:", "").trim();
@@ -303,6 +255,173 @@ export async function scrapeBbdFeeDetails(
     fees,
     academicYears,
     sourceUrl: DETAILS_URL,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/**
+ * Step 2: Submits the search form for a single college
+ */
+export async function scrapeBbdFeeDetails(
+  org: Organization,
+  studentName: string,
+  mobile: string
+): Promise<ScrapedStudentDetails> {
+  const cleanName = studentName.trim();
+  const cleanMobile = mobile.trim().replace(/\D/g, "");
+
+  if (!cleanName) {
+    throw new ScraperError("Student name is required", 400);
+  }
+
+  if (cleanMobile.length !== 10) {
+    throw new ScraperError(
+      `Mobile number must be exactly 10 digits (received ${cleanMobile.length} digits: ${cleanMobile})`,
+      400
+    );
+  }
+
+  const { token, cookies } = await getCsrfTokenAndSession();
+
+  const formParams = new URLSearchParams();
+  formParams.append("_token", token);
+  formParams.append("organization", org.id);
+  formParams.append("name", cleanName);
+  formParams.append("mobile", cleanMobile);
+
+  const postResp = await fetch(DETAILS_URL, {
+    method: "POST",
+    headers: {
+      "User-Agent": DEFAULT_USER_AGENT,
+      "Content-Type": "application/x-www-form-urlencoded",
+      Referer: FEE_PAYMENT_URL,
+      Origin: BASE_URL,
+      Cookie: cookies,
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    },
+    body: formParams.toString(),
+    cache: "no-store",
+  });
+
+  if (postResp.status === 419) {
+    throw new ScraperError("Portal session expired (419). Please try again.", 502);
+  }
+
+  if (!postResp.ok) {
+    throw new ScraperError(
+      `Portal returned unexpected response (${postResp.status} ${postResp.statusText})`,
+      502
+    );
+  }
+
+  const detailsHtml = await postResp.text();
+  return parseStudentDetailsHtml(detailsHtml, org, cleanName, cleanMobile);
+}
+
+/**
+ * Searches all 5 BBD colleges simultaneously for a student name and mobile number
+ */
+export async function scrapeAllBbdColleges(
+  studentName: string,
+  mobile: string
+): Promise<MultiCollegeSearchResult> {
+  const cleanName = studentName.trim();
+  const cleanMobile = mobile.trim().replace(/\D/g, "");
+
+  if (!cleanName) {
+    throw new ScraperError("Student name is required", 400);
+  }
+
+  if (cleanMobile.length !== 10) {
+    throw new ScraperError(
+      `Mobile number must be exactly 10 digits (received ${cleanMobile.length} digits: ${cleanMobile})`,
+      400
+    );
+  }
+
+  // Query all colleges concurrently with fresh session tokens
+  const searchPromises = ORGANIZATIONS.map(async (org) => {
+    try {
+      const { token, cookies } = await getCsrfTokenAndSession();
+      const formParams = new URLSearchParams();
+      formParams.append("_token", token);
+      formParams.append("organization", org.id);
+      formParams.append("name", cleanName);
+      formParams.append("mobile", cleanMobile);
+
+      const resp = await fetch(DETAILS_URL, {
+        method: "POST",
+        headers: {
+          "User-Agent": DEFAULT_USER_AGENT,
+          "Content-Type": "application/x-www-form-urlencoded",
+          Referer: FEE_PAYMENT_URL,
+          Origin: BASE_URL,
+          Cookie: cookies,
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+        body: formParams.toString(),
+        cache: "no-store",
+      });
+
+      if (!resp.ok) {
+        return {
+          org,
+          found: false,
+          record: null,
+          error: `HTTP ${resp.status}`,
+        };
+      }
+
+      const html = await resp.text();
+      try {
+        const record = parseStudentDetailsHtml(html, org, cleanName, cleanMobile);
+        return {
+          org,
+          found: true,
+          record,
+        };
+      } catch (parseErr) {
+        return {
+          org,
+          found: false,
+          record: null,
+          error: parseErr instanceof Error ? parseErr.message : "Not matched",
+        };
+      }
+    } catch (err) {
+      return {
+        org,
+        found: false,
+        record: null,
+        error: err instanceof Error ? err.message : "Request failed",
+      };
+    }
+  });
+
+  const results = await Promise.all(searchPromises);
+
+  const matchedRecords: ScrapedStudentDetails[] = [];
+  const searchedColleges = results.map((r) => {
+    if (r.found && r.record) {
+      matchedRecords.push(r.record);
+    }
+    return {
+      id: r.org.id,
+      code: r.org.code,
+      name: r.org.name,
+      found: r.found,
+      error: r.error,
+    };
+  });
+
+  return {
+    success: true,
+    found: matchedRecords.length > 0,
+    studentName: cleanName,
+    mobile: cleanMobile,
+    totalFound: matchedRecords.length,
+    records: matchedRecords,
+    searchedColleges,
     timestamp: new Date().toISOString(),
   };
 }
