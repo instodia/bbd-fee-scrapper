@@ -1,21 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "BBD Fee Payment & Student Details Scraper",
-  description:
-    "Scrape student fee status, university roll number, registration details, and academic profile from mybbd.in/fee-payment using college name, student name, and mobile number.",
+  title: "BBD Fee Payment & Student Details",
+  description: "Search and view student fee payment and academic details from BBD portal.",
 };
 
 export default function RootLayout({
@@ -24,11 +12,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en" className="h-full bg-white text-gray-900">
+      <body className="min-h-full bg-gray-50 text-gray-900 antialiased">{children}</body>
     </html>
   );
 }
